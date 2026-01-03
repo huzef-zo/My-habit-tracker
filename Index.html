@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FORGE Habit Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#10b981">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <style>
+        * { -webkit-tap-highlight-color: transparent; }
+        body { overscroll-behavior-y: none; }
+        button, input { font-size: 16px !important; }
+        .habit-day { width: 44px; height: 44px; }
+    </style>
+</head>
+<body class="bg-slate-900 text-white">
+    <div id="app" class="min-h-screen p-4">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-6">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-fire text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black">FORGE</h1>
+                    <p class="text-sm text-gray-400">Consistency under pressure</p>
+                </div>
+            </div>
+            <button id="themeToggle" class="p-3 bg-slate-800 rounded-lg">
+                <i class="fas fa-moon"></i>
+            </button>
+        </div>
+
+        <!-- Stats -->
+        <div class="grid grid-cols-2 gap-3 mb-6">
+            <div class="bg-slate-800 p-4 rounded-xl">
+                <p class="text-sm text-gray-400">Total Habits</p>
+                <p id="habitCount" class="text-2xl font-bold">4</p>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl">
+                <p class="text-sm text-gray-400">Today's Progress</p>
+                <p id="todayProgress" class="text-2xl font-bold text-emerald-500">0%</p>
+            </div>
+        </div>
+
+        <!-- Add Habit -->
+        <div class="mb-6">
+            <div class="flex gap-2">
+                <input id="newHabitInput" type="text" placeholder="Add new habit..." 
+                       class="flex-1 p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <button id="addHabitBtn" class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 rounded-lg font-bold">
+                    Add
+                </button>
+            </div>
+        </div>
+
+        <!-- Habits List -->
+        <div id="habitsContainer"></div>
+
+        <!-- Install Hint -->
+        <div class="mt-8 bg-slate-800 p-4 rounded-xl text-center">
+            <i class="fas fa-mobile-alt text-3xl text-emerald-500 mb-2"></i>
+            <p class="font-bold">Install as App</p>
+            <p class="text-sm text-gray-400">Tap ⋮ → "Add to Home screen"</p>
+        </div>
+    </div>
+
+    <script>
+        // Habit Tracker App
+        class HabitTracker {
+            constructor() {
+                this.habits = JSON.parse(localStorage.getItem('forgeHabits')) || [
+                    { id: 1, name: 'Morning Exercise', color: '#10b981', completed: {} },
+                    { id: 2, name: 'Read 30 mins', color: '#3b82f6', completed: {} },
+                    { id: 3, name: 'Drink Water', color: '#8b5cf6', completed: {} },
+                    { id: 4, name: 'Meditate', color: '#f59e0b', completed: {} }
+                ];
+                this.darkMode = true;
+                this.currentDate = new Date();
+                
+                this.init();
+            }
+
+            init() {
+                this.render();
+                this.setupEventListeners();
+                this.updateStats();
+                this.autoSave();
+                this.showInstallHint();
+            }
+
+            render() {
+                const container = document.getElementById('habitsContainer');
+                container.innerHTML = '';
+                
+                // Get current week days
+                const weekDays = this.getWeekDays();
+                
+                this.habits.forEach(habit => {
+                    const habitEl = document.createElement('div');
+                    habitEl.className = 'bg-slate-800 p-4 rounded-xl mb-3';
+                    habitEl.innerHTML = `
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-3 h-3 rounded-full" style="background: ${habit.color}"></div>
+                                <span class="font-bold">${habit.name}</span>
+                            </div>
+                            <button class="delete-btn text-red-500" data-id="${habit.id}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="flex justify-between">
+                            ${weekDays.map(day => {
+                                const isToday = day.date === this.currentDate.getDate();
+                                const isCompleted = habit.completed[day.date] || false;
+                                return `
+                                    <div class="text-center">
+                                        <p class="text-xs text-gray-400 mb-1">${day.name}</p>
+                                        <button class="habit-day ${isToday ? 'border-2 border-emerald-500' : ''} ${isCompleted ? 'bg-emerald-500' : 'bg-slate-700'} rounded-lg"
+                                                data-habit="${habit.id}" data-day="${day.date}">
+                                            ${day.date}
+                                        </button>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                    container.appendChild(habitEl);
+                });
+            }
+
+            getWeekDays() {
+                const today = new Date();
+                const dayOfWeek = today.getDay(); // 0 = Sunday
+                const startDate = new Date(today);
+                startDate.setDate(today.getDate() - dayOfWeek + 1); // Start from Monday
+                
+                const days = [];
+                for (let i = 0; i < 7; i++) {
+                    const date = new Date(startDate);
+                    date.setDate(startDate.getDate() + i);
+                    days.push({
+                        name: date.toLocaleDateString('en', { weekday: 'short' }),
+                        date: date.getDate()
+                    });
+                }
+                return days;
+            }
+
+            setupEventListeners() {
+                // Add habit
+                document.getElementById('addHabitBtn').addEventListener('click', () => this.addHabit());
+                document.getElementById('newHabitInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.addHabit();
+                });
+
+                // Theme toggle
+                document.getElementById('themeToggle').addEventListener('click', () => {
+                    this.darkMode = !this.darkMode;
+                    document.body.classList.toggle('bg-slate-900', this.darkMode);
+                    document.body.classList.toggle('bg-gray-100', !this.darkMode);
+                    document.body.classList.toggle('text-white', this.darkMode);
+                    document.body.classList.toggle('text-gray-900', !this.darkMode);
+                    
+                    const icon = document.querySelector('#themeToggle i');
+                    icon.className = this.darkMode ? 'fas fa-moon' : 'fas fa-sun';
+                });
+
+                // Delegate events for dynamic content
+                document.addEventListener('click', (e) => {
+                    // Toggle habit completion
+                    if (e.target.closest('.habit-day')) {
+                        const btn = e.target.closest('.habit-day');
+                        const habitId = parseInt(btn.dataset.habit);
+                        const day = parseInt(btn.dataset.day);
+                        this.toggleHabit(habitId, day);
+                    }
+                    
+                    // Delete habit
+                    if (e.target.closest('.delete-btn')) {
+                        const btn = e.target.closest('.delete-btn');
+                        const habitId = parseInt(btn.dataset.id);
+                        if (confirm('Delete this habit?')) {
+                            this.deleteHabit(habitId);
+                        }
+                    }
+                });
+            }
+
+            addHabit() {
+                const input = document.getElementById('newHabitInput');
+                const name = input.value.trim();
+                
+                if (name) {
+                    const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4'];
+                    const newHabit = {
+                        id: Date.now(),
+                        name: name,
+                        color: colors[this.habits.length % colors.length],
+                        completed: {}
+                    };
+                    
+                    this.habits.push(newHabit);
+                    input.value = '';
+                    this.render();
+                    this.updateStats();
+                    this.save();
+                }
+            }
+
+            toggleHabit(habitId, day) {
+                const habit = this.habits.find(h => h.id === habitId);
+                if (habit) {
+                    habit.completed[day] = !habit.completed[day];
+                    this.render();
+                    this.updateStats();
+                    this.save();
+                }
+            }
+
+            deleteHabit(habitId) {
+                this.habits = this.habits.filter(h => h.id !== habitId);
+                this.render();
+                this.updateStats();
+                this.save();
+            }
+
+            updateStats() {
+                document.getElementById('habitCount').textContent = this.habits.length;
+                
+                // Calculate today's progress
+                const today = this.currentDate.getDate();
+                let completedToday = 0;
+                this.habits.forEach(habit => {
+                    if (habit.completed[today]) completedToday++;
+                });
+                
+                const progress = this.habits.length > 0 
+                    ? Math.round((completedToday / this.habits.length) * 100) 
+                    : 0;
+                
+                document.getElementById('todayProgress').textContent = `${progress}%`;
+            }
+
+            save() {
+                localStorage.setItem('forgeHabits', JSON.stringify(this.habits));
+            }
+
+            autoSave() {
+                setInterval(() => this.save(), 30000); // Auto-save every 30 seconds
+            }
+
+            showInstallHint() {
+                // Show install hint after 15 seconds
+                setTimeout(() => {
+                    if (window.matchMedia('(display-mode: browser)').matches) {
+                        const hint = document.createElement('div');
+                        hint.innerHTML = `
+                            <div style="position:fixed; bottom:20px; right:20px; background:#10b981; color:white; padding:12px; border-radius:12px; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+                                <strong>📱 Install as App</strong><br>
+                                <small>Tap ⋮ → Add to Home screen</small>
+                            </div>
+                        `;
+                        document.body.appendChild(hint);
+                        setTimeout(() => hint.remove(), 10000);
+                    }
+                }, 15000);
+            }
+        }
+
+        // Initialize app when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new HabitTracker();
+            
+            // Register service worker for PWA
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js').catch(console.log);
+            }
+        });
+
+        // Handle install prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            // Auto-show prompt after 20 seconds
+            setTimeout(() => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                }
+            }, 20000);
+        });
+    </script>
+</body>
+  </html>
